@@ -1,14 +1,19 @@
 
-#define A   PD3
-#define B   PD2
-#define C   PD6
-#define D   PB0
-#define E   PD7
-#define F   PD4
-#define G   PD5
+#define SEG1_IN1	PD6
+#define SEG1_IN2	PD7
+#define SEG1_IN3	PB0
+#define SEG1_IN4	PB1
 
-#define DIG1  PB1
-#define DIG2  PB2
+#define SEG2_IN1	PD2
+#define SEG2_IN2	PD3
+#define SEG2_IN3	PD4
+#define SEG2_IN4	PD5
+
+#define CTL_LATCH	PB2
+#define CTL_BLANK	PB3
+#define CTL_TEST	PB4
+
+#define LED	PB5
 
 #define BTN   PC0
 
@@ -17,25 +22,12 @@ bool prevBtnState = true;
 unsigned long lastBtnChangeMillis = millis();
 
 int count = 0;
-int digit1 = 0;
-int digit2 = 0;
-
-uint8_t digitBitMask[10] = {
-  0000001,      // digit 0
-  1001111,      // digit 1
-  0010010,      // digit 2
-  0000110,      // digit 3
-  1001100,      // digit 4
-  0100100,      // digit 5
-  0100000,      // digit 6
-  0001111,      // digit 7
-  0000000,      // digit 8
-  0000100       // digit 9
-};
 
 void setup() {
+  Serial.begin(9600);
   initializeSevenSegment();
   initializeButton();
+  DDRB |= (1 << DDB5);
 }
 
 void loop() {
@@ -44,28 +36,27 @@ void loop() {
   // Do this only if the button has changed state
   if (btnState != prevBtnState)
   {
+    PORTB ^= (1 << PORTB5);
     // Long press detected if the press is greater than 2000ms (Reset)
-    if ((millis() - lastBtnChangeMillis) > 2000)
+    if ((btnState) && ((millis() - lastBtnChangeMillis) > 2000))
     {
       // Button is released if the button state is true (HIGH)
-      if (!btnState)
-      {
-        count = 0;
-        updateDigit1();
-        updateDigit2(); 
-      }
+      count = 0;
+      updateDigit1();
+      updateDigit2();
     }
     // Otherwise, it's a short press (Count up) 200ms for debounce
-    else if (millis() - lastBtnChangeMillis > 200)
+    if ((btnState) && (millis() - lastBtnChangeMillis > 200))
     {
       // Button is released if the button state is true (HIGH)
-      if (!btnState)
-      {
-        // Set the maximum value (99) and increment
-        count = count + 1 <= 99 ? count + 1 : 99;
-        updateDigit1();
-        updateDigit2(); 
-      }
+      // Set the maximum value (99) and increment
+      count = count + 1 <= 99 ? count + 1 : 99;
+      updateDigit1();
+      updateDigit2();
+      
+      Serial.print("Count: ");
+      Serial.println(count);
+      Serial.println("Digit display");
     }
     lastBtnChangeMillis = millis();    
   }
@@ -76,8 +67,8 @@ void loop() {
 void initializeSevenSegment(void)
 {
   // Set all the Seven segment display pins as outputs
-  DDRB |= (1 << D) | (1 << DIG1) | (1 << DIG2);
-  DDRD |= (1 << A) | (1 << B) | (1 << C) | (1 << E) | (1 << F) | (1 << G);
+  DDRD |= (1 << SEG1_IN1) | (1 << SEG1_IN2) | (1 << SEG2_IN3) | (1 << SEG2_IN4) | (1 << SEG2_IN1) | (1 << SEG2_IN2);
+  DDRB |= (1 << SEG1_IN3) | (1 << SEG1_IN4);
 }
 
 void initializeButton(void)
@@ -88,92 +79,57 @@ void initializeButton(void)
 
 bool readBtnState(void)
 {
-  return (PINB & (1 << BTN));
+  return (PINC & (1 << BTN));
 }
 
 void updateDigit1(void)
 {
   // Get the ones value
-  digit1 = count%10;
-  // Set DIG2 high and DIG1 low to enable output on the 1st digit
-  PORTB |= (1 << DIG2);
-  PORTB &= ~(1 << DIG1); 
+  int digit1 = count%10;
 
   // Display segments of the 1st digit
   uint8_t testBitMask = 0;
-  for (int i = 6; i >= 0; i++)
-  {
-    // Generate a bit mask with 1's at the test positions
-    testBitMask = (1 << i);
-    // Use the XOR operator to look for the zeros in the digit
-    if (testBitMask ^ digitBitMask[digit2])
-    {
-      updateSegment(i, HIGH);
-    }
-    else 
-    {
-      updateSegment(i, LOW);
-    }
-  }
+  int state = LOW;
+  
+  testBitMask = (1 << 0);
+  state = (testBitMask & digit1) == testBitMask ? HIGH : LOW;
+  digitalWrite(SEG1_IN1, state);
+  
+  testBitMask = (1 << 1);
+  state = (testBitMask & digit1) == testBitMask ? HIGH : LOW;
+  digitalWrite(SEG1_IN2, state);
+  
+  testBitMask = (1 << 2);
+  state = (testBitMask & digit1) == testBitMask ? HIGH : LOW;
+  digitalWrite(SEG1_IN3, state);
+  
+  testBitMask = (1 << 3);
+  state = (testBitMask & digit1) == testBitMask ? HIGH : LOW;
+  digitalWrite(SEG1_IN4, state);
 }
 
 void updateDigit2(void)
 {
   // Get the tens value
-  digit2 = count/10;
-  // Set DIG1 high and DIG2 low to enable output on the 2nd digit
-  PORTB |= (1 << DIG1);
-  PORTB &= ~(1 << DIG2);
+  int digit2 = count/10;
 
   // Display segments of the 2nd digit
   uint8_t testBitMask = 0;
-  for (int i = 6; i >= 0; i++)
-  {
-    // Generate a bit mask with 1's at the test positions
-    testBitMask = (1 << i);
-    // Use the XOR operator to look for the zeros in the digit
-    if (testBitMask ^ digitBitMask[digit2])
-    {
-      updateSegment(i, HIGH);
-    }
-    else 
-    {
-      updateSegment(i, LOW);
-    }
-  }
-}
-
-void updateSegment(int i, int state)
-{
-  switch (i)
-  {
-    case 0:
-      if (state == HIGH) digitalWrite(A ,HIGH);
-      else digitalWrite(A, LOW);
-      break;
-    case 1:
-      if (state == HIGH) digitalWrite(B ,HIGH);
-      else digitalWrite(B, LOW);
-      break;
-    case 2:
-      if (state == HIGH) digitalWrite(C ,HIGH);
-      else digitalWrite(C, LOW);
-      break;
-    case 3:
-      if (state == HIGH) digitalWrite(D ,HIGH);
-      else digitalWrite(D, LOW);
-      break;
-    case 4:
-      if (state == HIGH) digitalWrite(E ,HIGH);
-      else digitalWrite(E, LOW);
-      break;
-    case 5:
-      if (state == HIGH) digitalWrite(F ,HIGH);
-      else digitalWrite(F, LOW);
-      break;
-    case 6:
-      if (state == HIGH) digitalWrite(G ,HIGH);
-      else digitalWrite(G, LOW);
-      break;
-  }
+  int state = LOW;
+  
+  testBitMask = (1 << 0);
+  state = (testBitMask & digit2) == testBitMask ? HIGH : LOW;
+  digitalWrite(SEG2_IN1, state);
+  
+  testBitMask = (1 << 1);
+  state = (testBitMask & digit2) == testBitMask ? HIGH : LOW;
+  digitalWrite(SEG2_IN2, state);
+  
+  testBitMask = (1 << 2);
+  state = (testBitMask & digit2) == testBitMask ? HIGH : LOW;
+  digitalWrite(SEG2_IN3, state);
+  
+  testBitMask = (1 << 3);
+  state = (testBitMask & digit2) == testBitMask ? HIGH : LOW;
+  digitalWrite(SEG2_IN4, state);
 }
